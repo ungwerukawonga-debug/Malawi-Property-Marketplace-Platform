@@ -1,0 +1,6 @@
+{
+  "name": "Malawi Property Marketplace",
+  "description": "A direct owner-to-customer property marketplace platform for Malawi, enabling listing, discovery, booking, payments, and property management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
