@@ -19,6 +19,8 @@ interface OwnerDashboardProps {
   onUpdateBookingStatus: (bookingId: string, status: Booking['status']) => void;
   onUpdateOwnerProfile: (profile: OwnerProfile) => void;
   onAddReplyToEnquiry: (enquiryId: string, reply: string) => void;
+  onUpdatePropertyCalendar?: (propertyId: string, date: string, status: 'Available' | 'Reserved' | 'Occupied' | 'Maintenance') => void;
+  onTrackWhatsappClick?: (propertyId: string) => void;
 }
 
 export default function OwnerDashboard({
@@ -31,9 +33,15 @@ export default function OwnerDashboard({
   onDeleteProperty,
   onUpdateBookingStatus,
   onUpdateOwnerProfile,
-  onAddReplyToEnquiry
+  onAddReplyToEnquiry,
+  onUpdatePropertyCalendar,
+  onTrackWhatsappClick
 }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'bookings' | 'enquiries' | 'settings'>('overview');
+
+  // Local state for calendar management
+  const [editingCalendarPropertyId, setEditingCalendarPropertyId] = useState<string | null>(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
   // New property form state
   const [newPropName, setNewPropName] = useState('');
@@ -329,13 +337,113 @@ export default function OwnerDashboard({
                       </div>
 
                       <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCalendarPropertyId(editingCalendarPropertyId === prop.id ? null : prop.id);
+                          setSelectedCalendarDate(null);
+                        }}
+                        className={`text-xs py-1 px-2.5 rounded-md border font-semibold font-sans flex items-center gap-1 transition-all cursor-pointer ${
+                          editingCalendarPropertyId === prop.id
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                        title="Manage Short-stay calendars"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        Calendar
+                      </button>
+
+                      <button
                         onClick={() => onDeleteProperty(prop.id)}
-                        className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                        className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
                         title="Delete listing"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+
+                    {/* Collapsible Calendar block for this listing */}
+                    {editingCalendarPropertyId === prop.id && (
+                      <div className="mt-4 w-full bg-slate-50/50 rounded-xl border border-slate-200/60 p-4 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
+                          <div>
+                            <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase">Interactive Short-Stay & Airbnb Booking Calendar</span>
+                            <h5 className="text-sm font-bold text-slate-800">July 2026 Availability Tracker</h5>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span> Available</span>
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-amber-500 rounded-full"></span> Reserved</span>
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-sky-500 rounded-full"></span> Occupied</span>
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-rose-500 rounded-full"></span> Maintenance</span>
+                          </div>
+                        </div>
+
+                        {/* Month Grid */}
+                        <div className="grid grid-cols-7 gap-2 text-center max-w-lg mx-auto">
+                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                            <div key={day} className="text-[10px] font-bold font-mono text-slate-400 uppercase py-1">{day}</div>
+                          ))}
+                          
+                          {/* Offset for July 2026: July 1st, 2026 is a Wednesday (Wednesday is index 3) */}
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={`empty-${i}`} className="aspect-square"></div>
+                          ))}
+
+                          {Array.from({ length: 31 }).map((_, i) => {
+                            const dayNum = i + 1;
+                            const dayStr = dayNum < 10 ? `0${dayNum}` : `${dayNum}`;
+                            const dateStr = `2026-07-${dayStr}`;
+                            const currentStatus = (prop.calendarEvents && prop.calendarEvents[dateStr]) || 'Available';
+                            const isSelected = selectedCalendarDate === dateStr;
+
+                            let statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-300';
+                            if (currentStatus === 'Reserved') statusColor = 'bg-amber-50 text-amber-700 border-amber-300';
+                            else if (currentStatus === 'Occupied') statusColor = 'bg-sky-50 text-sky-700 border-sky-300';
+                            else if (currentStatus === 'Maintenance') statusColor = 'bg-rose-50 text-rose-700 border-rose-300';
+
+                            return (
+                              <button
+                                type="button"
+                                key={dateStr}
+                                onClick={() => setSelectedCalendarDate(isSelected ? null : dateStr)}
+                                className={`aspect-square rounded-lg border flex flex-col items-center justify-center p-1 transition-all cursor-pointer ${statusColor} ${
+                                  isSelected ? 'ring-2 ring-indigo-600 scale-95 shadow-xs font-bold' : 'hover:opacity-80'
+                                }`}
+                              >
+                                <span className="text-xs">{dayNum}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Date Status Adjuster Controls */}
+                        {selectedCalendarDate && (
+                          <div className="bg-white rounded-lg p-3 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 max-w-md mx-auto">
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-400 block">Selected Date:</span>
+                              <span className="text-xs font-bold text-slate-800">{selectedCalendarDate}</span>
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap justify-end">
+                              {(['Available', 'Reserved', 'Occupied', 'Maintenance'] as const).map(status => (
+                                <button
+                                  type="button"
+                                  key={status}
+                                  onClick={() => {
+                                    if (onUpdatePropertyCalendar) {
+                                      onUpdatePropertyCalendar(prop.id, selectedCalendarDate, status);
+                                      alert(`Date ${selectedCalendarDate} status updated to: ${status}`);
+                                    }
+                                  }}
+                                  className="text-[10px] font-semibold py-1 px-2.5 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 cursor-pointer"
+                                >
+                                  {status}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
 

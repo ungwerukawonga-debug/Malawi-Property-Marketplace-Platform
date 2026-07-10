@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { UserRole, Property, PropertyCategory, ListingType, PropertyStatus, Booking, Enquiry, OwnerProfile } from './types';
+import React, { useState, useEffect } from 'react';
+import { UserRole, Property, PropertyCategory, ListingType, PropertyStatus, Booking, Enquiry, OwnerProfile, FraudReport, SavedSearch } from './types';
 import { INITIAL_PROPERTIES, INITIAL_BOOKINGS, INITIAL_ENQUIRIES, INITIAL_OWNER_PROFILE } from './data';
 import VisitorView from './components/VisitorView';
 import OwnerDashboard from './components/OwnerDashboard';
@@ -17,67 +17,308 @@ export default function App() {
   const [properties, setProperties] = useState<Property[]>(INITIAL_PROPERTIES);
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
   const [enquiries, setEnquiries] = useState<Enquiry[]>(INITIAL_ENQUIRIES);
+  const [fraudReports, setFraudReports] = useState<FraudReport[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [ownerProfile, setOwnerProfile] = useState<OwnerProfile>(INITIAL_OWNER_PROFILE);
   
   // Navigation Role/View State (Extended with 'DOC_HUB' option)
   const [activeRole, setActiveRole] = useState<UserRole | 'DOC_HUB'>(UserRole.VISITOR);
 
-  // Core State Modifiers
-  const handleAddBooking = (newBooking: Booking) => {
-    setBookings((prev) => [newBooking, ...prev]);
-  };
-
-  const handleUpdatePropertyStatus = (propertyId: string, status: PropertyStatus) => {
-    setProperties((prev) =>
-      prev.map((prop) => (prop.id === propertyId ? { ...prop, status, updatedDate: new Date().toISOString().split('T')[0] } : prop))
-    );
-  };
-
-  const handleDeleteProperty = (propertyId: string) => {
-    setProperties((prev) => prev.filter((prop) => prop.id !== propertyId));
-  };
-
-  const handleApproveProperty = (propertyId: string) => {
-    setProperties((prev) =>
-      prev.map((prop) => (prop.id === propertyId ? { ...prop, isApproved: true } : prop))
-    );
-  };
-
-  const handleRejectProperty = (propertyId: string) => {
-    setProperties((prev) => prev.filter((prop) => prop.id !== propertyId));
-  };
-
-  const handleAddProperty = (newProp: Property) => {
-    setProperties((prev) => [newProp, ...prev]);
-  };
-
-  const handleAddEnquiry = (newEnq: Enquiry) => {
-    setEnquiries((prev) => [newEnq, ...prev]);
-  };
-
-  const handleAddReplyToEnquiry = (enquiryId: string, reply: string) => {
-    setEnquiries((prev) =>
-      prev.map((enq) => (enq.id === enquiryId ? { ...enq, replied: true, replyMessage: reply } : enq))
-    );
-  };
-
-  const handleUpdateBookingStatus = (bookingId: string, status: Booking['status']) => {
-    setBookings((prev) =>
-      prev.map((book) => {
-        if (book.id === bookingId) {
-          const updatedBook = { ...book, status };
-          if (status === 'Confirmed') {
-            updatedBook.receiptNumber = `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-          }
-          return updatedBook;
-        }
-        return book;
+  // Load from API on mount
+  useEffect(() => {
+    fetch('/api/properties')
+      .then((res) => {
+        if (res.ok) return res.json();
+        throw new Error('API down');
       })
-    );
+      .then((data) => setProperties(data))
+      .catch((e) => console.warn('Backend server down/starting, using mock data:', e));
+
+    fetch('/api/bookings')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setBookings(data))
+      .catch(() => {});
+
+    fetch('/api/enquiries')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setEnquiries(data))
+      .catch(() => {});
+
+    fetch('/api/reports')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setFraudReports(data))
+      .catch(() => {});
+
+    fetch('/api/saved-searches')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setSavedSearches(data))
+      .catch(() => {});
+  }, []);
+
+  // Core State Modifiers
+  const handleAddBooking = async (newBooking: Booking) => {
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBooking)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setBookings((prev) => [saved, ...prev]);
+      } else {
+        setBookings((prev) => [newBooking, ...prev]);
+      }
+    } catch {
+      setBookings((prev) => [newBooking, ...prev]);
+    }
+  };
+
+  const handleUpdatePropertyStatus = async (propertyId: string, status: PropertyStatus) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProperties((prev) => prev.map((p) => (p.id === propertyId ? updated : p)));
+      } else {
+        setProperties((prev) =>
+          prev.map((prop) => (prop.id === propertyId ? { ...prop, status, updatedDate: new Date().toISOString().split('T')[0] } : prop))
+        );
+      }
+    } catch {
+      setProperties((prev) =>
+        prev.map((prop) => (prop.id === propertyId ? { ...prop, status, updatedDate: new Date().toISOString().split('T')[0] } : prop))
+      );
+    }
+  };
+
+  const handleDeleteProperty = async (propertyId: string) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setProperties((prev) => prev.filter((prop) => prop.id !== propertyId));
+      }
+    } catch {
+      setProperties((prev) => prev.filter((prop) => prop.id !== propertyId));
+    }
+  };
+
+  const handleApproveProperty = async (propertyId: string) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isApproved: true })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProperties((prev) => prev.map((p) => (p.id === propertyId ? updated : p)));
+      } else {
+        setProperties((prev) =>
+          prev.map((prop) => (prop.id === propertyId ? { ...prop, isApproved: true } : prop))
+        );
+      }
+    } catch {
+      setProperties((prev) =>
+        prev.map((prop) => (prop.id === propertyId ? { ...prop, isApproved: true } : prop))
+      );
+    }
+  };
+
+  const handleRejectProperty = async (propertyId: string) => {
+    handleDeleteProperty(propertyId);
+  };
+
+  const handleAddProperty = async (newProp: Property) => {
+    try {
+      const res = await fetch('/api/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProp)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setProperties((prev) => [saved, ...prev]);
+      } else {
+        setProperties((prev) => [newProp, ...prev]);
+      }
+    } catch {
+      setProperties((prev) => [newProp, ...prev]);
+    }
+  };
+
+  const handleAddEnquiry = async (newEnq: Enquiry) => {
+    try {
+      const res = await fetch('/api/enquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEnq)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setEnquiries((prev) => [saved, ...prev]);
+      } else {
+        setEnquiries((prev) => [newEnq, ...prev]);
+      }
+    } catch {
+      setEnquiries((prev) => [newEnq, ...prev]);
+    }
+  };
+
+  const handleAddReplyToEnquiry = async (enquiryId: string, reply: string) => {
+    try {
+      const res = await fetch(`/api/enquiries/${enquiryId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replyMessage: reply })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setEnquiries((prev) => prev.map((e) => (e.id === enquiryId ? updated : e)));
+      } else {
+        setEnquiries((prev) =>
+          prev.map((enq) => (enq.id === enquiryId ? { ...enq, replied: true, replyMessage: reply } : enq))
+        );
+      }
+    } catch {
+      setEnquiries((prev) =>
+        prev.map((enq) => (enq.id === enquiryId ? { ...enq, replied: true, replyMessage: reply } : enq))
+      );
+    }
+  };
+
+  const handleUpdateBookingStatus = async (bookingId: string, status: Booking['status']) => {
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? updated : b)));
+      } else {
+        setBookings((prev) =>
+          prev.map((book) => {
+            if (book.id === bookingId) {
+              const updatedBook = { ...book, status };
+              if (status === 'Confirmed') {
+                updatedBook.receiptNumber = `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+              }
+              return updatedBook;
+            }
+            return book;
+          })
+        );
+      }
+    } catch {
+      setBookings((prev) =>
+        prev.map((book) => {
+          if (book.id === bookingId) {
+            const updatedBook = { ...book, status };
+            if (status === 'Confirmed') {
+              updatedBook.receiptNumber = `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+            return updatedBook;
+          }
+          return book;
+        })
+      );
+    }
   };
 
   const handleUpdateOwnerProfile = (profile: OwnerProfile) => {
     setOwnerProfile(profile);
+  };
+
+  const handleAddFraudReport = async (report: FraudReport) => {
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(report)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setFraudReports((prev) => [saved, ...prev]);
+      }
+    } catch {
+      setFraudReports((prev) => [report, ...prev]);
+    }
+  };
+
+  const handleUpdateReportStatus = async (reportId: string, status: FraudReport['status']) => {
+    try {
+      const res = await fetch(`/api/reports/${reportId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setFraudReports((prev) => prev.map((r) => (r.id === reportId ? updated : r)));
+      }
+    } catch {
+      setFraudReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status } : r)));
+    }
+  };
+
+  const handleAddSavedSearch = async (search: SavedSearch) => {
+    try {
+      const res = await fetch('/api/saved-searches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(search)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setSavedSearches((prev) => [saved, ...prev]);
+      }
+    } catch {
+      setSavedSearches((prev) => [search, ...prev]);
+    }
+  };
+
+  const handleUpdatePropertyVerification = async (propertyId: string, verifications: string[], isApproved?: boolean) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verificationStatus: verifications, isApproved })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProperties((prev) => prev.map((p) => (p.id === propertyId ? updated : p)));
+      }
+    } catch {}
+  };
+
+  const handleUpdatePropertyCalendar = async (propertyId: string, date: string, status: 'Available' | 'Reserved' | 'Occupied' | 'Maintenance') => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, status })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProperties((prev) => prev.map((p) => (p.id === propertyId ? updated : p)));
+      }
+    } catch {}
+  };
+
+  const handleTrackWhatsAppClick = async (propertyId: string) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/whatsapp-click`, { method: 'POST' });
+      if (res.ok) {
+        const { whatsappClicksCount } = await res.json();
+        setProperties((prev) => prev.map((p) => p.id === propertyId ? { ...p, whatsappClicksCount } : p));
+      }
+    } catch {}
   };
 
   return (
@@ -177,6 +418,10 @@ export default function App() {
             onUpdatePropertyStatus={handleUpdatePropertyStatus}
             onAddEnquiry={handleAddEnquiry}
             role={UserRole.VISITOR}
+            savedSearches={savedSearches}
+            onAddSavedSearch={handleAddSavedSearch}
+            onAddFraudReport={handleAddFraudReport}
+            onTrackWhatsappClick={handleTrackWhatsAppClick}
           />
         )}
 
@@ -187,6 +432,10 @@ export default function App() {
             onUpdatePropertyStatus={handleUpdatePropertyStatus}
             onAddEnquiry={handleAddEnquiry}
             role={UserRole.CUSTOMER}
+            savedSearches={savedSearches}
+            onAddSavedSearch={handleAddSavedSearch}
+            onAddFraudReport={handleAddFraudReport}
+            onTrackWhatsappClick={handleTrackWhatsAppClick}
           />
         )}
 
@@ -202,6 +451,8 @@ export default function App() {
             onUpdateBookingStatus={handleUpdateBookingStatus}
             onUpdateOwnerProfile={handleUpdateOwnerProfile}
             onAddReplyToEnquiry={handleAddReplyToEnquiry}
+            onUpdatePropertyCalendar={handleUpdatePropertyCalendar}
+            onTrackWhatsappClick={handleTrackWhatsAppClick}
           />
         )}
 
@@ -212,6 +463,9 @@ export default function App() {
             onApproveProperty={handleApproveProperty}
             onRejectProperty={handleRejectProperty}
             onDeleteProperty={handleDeleteProperty}
+            fraudReports={fraudReports}
+            onUpdateReportStatus={handleUpdateReportStatus}
+            onUpdatePropertyVerification={handleUpdatePropertyVerification}
           />
         )}
 

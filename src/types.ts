@@ -99,6 +99,54 @@ export interface Property {
   updatedDate: string;
   reviews?: Review[];
   liveRoomAvailability?: string; // e.g. "Available Today", "Few Rooms Left", "Fully Booked", "Closed"
+  
+  // New Malawi-focused Marketplace Platform enhancements
+  verificationStatus?: ('Verified Owner' | 'Identity Verified' | 'Property Verified' | 'Recently Inspected')[];
+  featuredType?: 'Featured Property' | 'Top Search Result' | 'Sponsored Listing' | 'Premium Owner';
+  calendarEvents?: Record<string, 'Available' | 'Reserved' | 'Occupied' | 'Maintenance'>;
+  nearbyServices?: NearbyService[];
+  rentalHistory?: RentalHistoryRecord[];
+  whatsappClicksCount?: number;
+  bookingRatePercent?: number;
+}
+
+export interface NearbyService {
+  name: string;
+  category: 'School' | 'Hospital' | 'Filling Station' | 'Market' | 'Bank' | 'Police Station';
+  distance: string;
+}
+
+export interface RentalHistoryRecord {
+  date: string;
+  event: 'Listed' | 'Viewed' | 'Enquired' | 'Reserved' | 'Rented';
+  description: string;
+}
+
+export interface FraudReport {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  ownerName: string;
+  reporterName: string;
+  reportType: 'Report Listing' | 'Report Owner' | 'Incorrect Price' | 'Scam Alert';
+  details: string;
+  createdDate: string;
+  status: 'Pending' | 'Reviewed' | 'Dismissed';
+}
+
+export interface SavedSearch {
+  id: string;
+  searchName: string;
+  searchQuery: string;
+  selectedCategory: string;
+  selectedDistrict: string;
+  priceRange: number;
+  minBedrooms: number;
+  requireInternet: boolean;
+  requireWater: boolean;
+  requireElectricity: boolean;
+  createdDate: string;
+  notificationsCount: number;
 }
 
 export interface Booking {
